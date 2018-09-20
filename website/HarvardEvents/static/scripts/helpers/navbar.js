@@ -75,9 +75,16 @@ function create_navbar(user_signed_in, page) {
 		button_list.append("li")
 				   .attr("class", "nav-item")
 				   .append("button")
-			   		   .attr("class", "login-button btn btn-outline-success my-2 my-sm-0")
+			   		   .attr("class", "login-button my-2 my-sm-0")
 					   .attr("onclick", "location.href='/login'");
 	}
+
+		button_list.append("li")
+					.attr("class", "nav-item")
+					.append("a")
+				   		   .attr("class", "nav-github nav-link")
+			  		  	   .attr("href", "https://github.com/pateli18/hks_today")
+			  		  	   .html("GitHub");
 
 	// add search form
 	var search_form	= collapsible_bar.append("form")

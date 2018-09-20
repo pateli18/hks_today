@@ -131,6 +131,11 @@
 	color: #A51C30;
 }
 
+.nav-github {
+	color: black;
+	font-weight: bold;
+}
+
 .search-results {
 	font-style: italic;
 }
