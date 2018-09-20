@@ -1,4 +1,3 @@
-import pytz
 import datetime
 
 import httplib2
@@ -86,11 +85,7 @@ def all_events_viewer():
     Returns:
         resp (Flask Response): Main page of the site
     """
-    current_datetime = datetime.datetime.now(pytz.timezone('US/Eastern')).strftime('%Y-%m-%d %H:%M:00')
     user_id = current_user.id if current_user.is_authenticated else 'anonymous'
-
-    # get event ids of all events user has added to calendar
-    event_user_subquery = query_helpers.user_selected_events_subquery(user_id)
 
     # search handler
     if 'search' in request.args:
@@ -100,35 +95,11 @@ def all_events_viewer():
         search_item = Search(user_id=user_id, search=search_term)
         db.session.add(search_item)
         db.session.commit()
-
-        # query different fields for presence of search term,
-        # joined with event ids which user has already added to calendar
-        search_term_query = '%{0}%'.format(search_term)
-        event_query = (db.session.query(Event, event_user_subquery)
-                                 .filter(Event.start_time >= current_datetime)
-                                 .filter((Event.description.ilike(search_term_query)) |
-                                         (Event.title.ilike(search_term_query)) |
-                                         (Event.policy_topics.ilike(search_term_query)) |
-                                         (Event.academic_areas.ilike(search_term_query)) |
-                                         (Event.geographic_regions.ilike(search_term_query)) |
-                                         (Event.degrees_programs.ilike(search_term_query)) |
-                                         (Event.centers_initiatives.ilike(search_term_query)))
-                                 .order_by(Event.start_time)
-                                 .outerjoin(event_user_subquery)
-                                 .all())
-        num_events = len(event_query)
-
-    # non search handler
     else:
-        # get all future events, joined with event ids which user has already added to calendar
-        event_query = (db.session.query(Event, event_user_subquery)
-                                 .filter(Event.start_time >= current_datetime)
-                                 .order_by(Event.start_time)
-                                 .outerjoin(event_user_subquery)
-                                 .all())
         search_term = None
-        num_events = 0
 
+    event_query = query_helpers.get_events_query(user_id, search_term)
+    num_events = len(event_query)
     # loop through every event in events query and create a dict with date and events keys, with events as
     # an item with a single list
     template_data = {"search_term": search_term, "num_search_events": num_events}
