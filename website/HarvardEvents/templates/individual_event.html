@@ -1,0 +1,30 @@
+<html>
+	<head>
+		<link rel=stylesheet type=text/css href="{{url_for('static', filename='styles/libraries/bootstrap.min.css')}}">
+		<link rel=stylesheet type=text/css href="{{url_for('static', filename='styles/style.css')}}">
+		<link rel="shortcut icon" href="{{url_for('static', filename='img/favicon.ico')}}">
+		<title>HKSToday</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	</head>
+
+	<body>
+
+		<div id="navbar-container"></div>
+		
+	    <div class="container">
+			<div class="row" id="individual-event-container"></div>
+		</div>
+
+		<script src="{{ url_for('static', filename='scripts/libraries/jquery-3.3.1.min.js') }}"></script>
+		<script src="{{ url_for('static', filename='scripts/libraries/popper.min.js') }}"></script>
+		<script src="{{ url_for('static', filename='scripts/libraries/bootstrap.min.js') }}"></script>
+		<script src="{{ url_for('static', filename='scripts/libraries/d3.v5.min.js') }}"></script>
+		<script src="{{ url_for('static', filename='scripts/helpers/navbar.js') }}"></script>
+		<script src="{{ url_for('static', filename='scripts/handlers/individual_event_handler.js') }}"></script>
+		<script type="text/javascript">
+			var current_user_authentication = '{{current_user.is_authenticated}}';
+			var data = {{data|tojson}};
+			display_individual_event_page(current_user_authentication, data);
+		</script>
+	</body>
+</html>
