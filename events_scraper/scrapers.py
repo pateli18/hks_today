@@ -254,7 +254,6 @@ class HKSScraper(Scraper):
             session.post(self.base_url, self.payload)
             main_events_page = session.get(self.events_url)
             main_event_soup = BeautifulSoup(main_events_page.text, 'html.parser')
-            print(main_event_soup)
 
             # extract table with all events
             main_events_table = main_event_soup.find("div", {"id": "WebPartWPQ7"})
