@@ -7,4 +7,7 @@ If you'd like to add to and / or improve the site, feel free to submit a pull re
 Flask application for the actual website, deployed on AWS Elastic Beanstalk
 
 ## events_scraper
-Scraper scripts, run daily on AWS Lambda
+Scraper scripts, run daily as a cron job on AWS Lambda
+
+## events_senders
+Email scripts, run as cron jobs on AWS Lambda
