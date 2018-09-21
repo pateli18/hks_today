@@ -51,6 +51,7 @@ class Scraper(object):
         Returns:
             events_log (str): describes number of events added to the db on a specific day
         """
+
         # initialize connector
         conn = mysql.connector.connect(**self.config)
         cursor = conn.cursor()
@@ -60,12 +61,12 @@ class Scraper(object):
                      'additional_sponsor, start_time, end_time, event_type, location, description, intranet_homepage,'
                      'public_site, hks_today_email, ticketed_event, ticketed_event_instructions, ad_day_one, ad_day_two,'
                      'contact_name, contact_email, phone_number, rsvp_required, rsvp_date, rsvp_email_url, existing_website,'
-                     'policy_topics, academic_areas, geographic_regions, degrees_programs, centers_initiatives, key_terms)'
+                     'policy_topics, academic_areas, geographic_regions, degrees_programs, centers_initiatives, key_terms, date_added)'
                      'VALUES ("hks", %(source_id)s, %(title)s, %(short_description)s, %(speaker)s, %(sponsor)s, %(cosponsors)s,'
                      '%(additional_sponsors)s, %(start_time)s, %(end_time)s, %(event_type)s, %(location)s, %(description)s, %(intranet_home_page)s,'
                      '%(public_site)s, %(hks_today_email)s, %(ticketed_event)s, %(ticketed_event_instructions)s, %(advertisement_day_1)s, %(advertisement_day_2)s,'
                      '%(contact_name)s, %(contact_email_address)s, %(phone_number)s, %(rsvp_required)s, %(rsvp_date)s, %(rsvp_email_or_url)s, %(link_to_an_existing_website)s,'
-                     '%(policy_topics)s, %(academic_areas)s, %(geographic_regions)s, %(degrees_&_programs)s, %(centers_&_initiatives)s, %(key_terms)s)')
+                     '%(policy_topics)s, %(academic_areas)s, %(geographic_regions)s, %(degrees_&_programs)s, %(centers_&_initiatives)s, %(key_terms)s, %(date_added)s)')
 
         # sql template to update event
         update_event = ('update events set title=%(title)s, short_description=%(short_description)s, speaker=%(speaker)s, sponsor=%(sponsor)s, co_sponsor=%(cosponsors)s,'
@@ -84,6 +85,7 @@ class Scraper(object):
             # add new event
             else:
                 print(event)
+                event["date_added"] = str(datetime.datetime.today()).split('.')[0]
                 cursor.execute(add_event, event)
                 new_additions_counter += 1
         conn.commit()
