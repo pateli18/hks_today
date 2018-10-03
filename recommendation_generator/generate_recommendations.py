@@ -1,83 +1,16 @@
 import os
 
-import mysql.connector
 import pandas as pd
 import numpy as np
 from scipy.sparse.linalg import svds
 
+from utils import recommendation_helpers
+
 MODEL_VERSION = '0.0.0'
 
 
-def get_db_connection():
-    """
-    Generate connection to database for querying or putting data
-
-    Returns:
-        conn (mysql connection): connection to database
-    """
-
-    dbconfig = {
-        'host': os.environ['MYSQL_HOST'],
-        'database': os.environ['MYSQL_DB'],
-        'user': os.environ['MYSQL_USERNAME'],
-        'password': os.environ['MYSQL_PASSWORD'],
-    }
-    conn = mysql.connector.connect(**dbconfig)
-    return conn
-
-
-def get_table_data(table_name,
-                   non_dup_columns=None,
-                   verbose=True):
-    """
-    Gets dataframe of table
-
-    Arguments:
-        table_name (str): name of table (options are `events`, `searches`, `selected_events`, and `users`)
-
-    Keyword Arguments:
-        non_dup_columns (list): columns to exclude from drop duplicates
-        verbose (bool): print logging statements
-
-    Returns:
-        df (pandas DataFrame): dataframe of table data
-    """
-    conn = get_db_connection()
-    df = pd.read_sql("select * from {}".format(table_name), conn)
-
-    if non_dup_columns:
-        if verbose:
-            print("Dropping duplicates...")
-        dup_columns = [column for column in df.columns if column not in non_dup_columns]
-        df.drop_duplicates(dup_columns, inplace=True)
-
-    if verbose:
-        print("Shape: {}".format(df.shape))
-        print("Columns: {}".format(', '.join(df.columns)))
-    return df
-
-
-def get_canonical_event_adds(verbose=True):
-    """
-    Get dataframe of user additions to calendar no duplicates
-
-    Returns:
-        df_event_adds (pandas DataFrame)
-    """
-    df_selected_events = get_table_data(table_name='selected_events',
-                                        non_dup_columns=['id'],
-                                        verbose=False)
-
-    df_event_adds = (df_selected_events[df_selected_events.selection_type == 'calendar']
-                     .drop_duplicates(['user_id', 'event_id']))
-
-    if verbose:
-        print("Shape: {}".format(df_event_adds.shape))
-        print("Columns: {}".format(', '.join(df_event_adds.columns)))
-    return df_event_adds
-
-
-def get_user_event_df(min_actions):
+def get_user_event_df(min_actions,
+                      max_date=pd.Timestamp.today()):
     """
     Gets dataframe with user ids as index and event ids as columns,
     with a flag as the value if the user has added the event
@@ -88,7 +21,8 @@ def get_user_event_df(min_actions):
     Returns:
         user_event_df (Pandas DataFrame): dataframe with users as index and events as columns
     """
-    df = get_canonical_event_adds(verbose=False)
+    df = recommendation_helpers.get_canonical_event_adds(max_date=max_date,
+                                                         verbose=False)
 
     # get indices of users who have undertaken minimum number of actions
     user_adds = df.groupby('user_id').size()
@@ -145,9 +79,9 @@ def get_upcoming_events(date_filter=pd.Timestamp.today()):
         upcoming_events (list): list of event ids which have not occured yet
     """
 
-    events = get_table_data(table_name='events',
-                            non_dup_columns=['id', 'date_added'],
-                            verbose=False)
+    events = recommendation_helpers.get_table_data(table_name='events',
+                                                   non_dup_columns=['id', 'date_added'],
+                                                   verbose=False)
 
     date = pd.to_datetime(date_filter)
     upcoming_events = events[events['start_time'] > date]['id'].tolist()
@@ -157,7 +91,8 @@ def get_upcoming_events(date_filter=pd.Timestamp.today()):
 
 def get_recommendations(predictions_df,
                         user_event_df,
-                        threshold):
+                        threshold,
+                        date_filter=pd.Timestamp.today()):
     """
     Gets recommendations for each user
 
@@ -170,7 +105,7 @@ def get_recommendations(predictions_df,
         user_recommendations (dict): dict with user ids and list of events per user
     """
 
-    all_upcoming_events = get_upcoming_events()
+    all_upcoming_events = get_upcoming_events(date_filter)
 
     # only keep those events which at least one other user has added
     relevant_upcoming_events = [event for event in all_upcoming_events if event in user_event_df.columns]
@@ -189,7 +124,7 @@ def get_recommendations(predictions_df,
 
 def add_recs_to_db(user_recommendations):
     # initialize connector
-    conn = get_db_connection()
+    conn = recommendation_helpers.get_db_connection()
     cursor = conn.cursor()
 
     date_added = str(pd.Timestamp.today()).split('.')[0]
@@ -219,26 +154,39 @@ def add_recs_to_db(user_recommendations):
     return users_w_recs, total_recs
 
 
-def generate_recommendations(recs_config):
+def generate_recommendations(recs_config,
+                             add_to_db=True,
+                             max_date=pd.Timestamp.today()):
     """
     Runs each of the steps in the pipeline for generating recommendations
 
     Arguments:
         recs_config (dict): dictionary of config variable for generating recommendations
+
+    Returns:
+        user_recommendations (dict): dict with user ids and list of events per user
     """
     print("Getting User Event Matrix")
-    user_event_df = get_user_event_df(recs_config["min_user_actions"])
+    user_event_df = get_user_event_df(min_actions=recs_config["min_user_actions"],
+                                      max_date=max_date)
 
     print("Calculating Predictions")
-    predictions_df = get_predictions_df(user_event_df, recs_config["vector_size"])
+    predictions_df = get_predictions_df(user_event_df=user_event_df,
+                                        k=recs_config["vector_size"])
 
     print("Extracting Predictions")
-    user_recommendations = get_recommendations(predictions_df, user_event_df, recs_config["threshold"])
+    user_recommendations = get_recommendations(predictions_df=predictions_df,
+                                               user_event_df=user_event_df,
+                                               threshold=recs_config["threshold"],
+                                               date_filter=max_date)
 
-    print("Saving Predictions")
-    users_w_recs, total_recs = add_recs_to_db(user_recommendations)
+    if add_to_db:
+        print("Saving Predictions")
+        users_w_recs, total_recs = add_recs_to_db(user_recommendations)
 
-    print("Generated {0} recommendations for {1} users".format(total_recs, users_w_recs))
+        print("Generated {0} recommendations for {1} users".format(total_recs, users_w_recs))
+
+    return user_recommendations
 
 
 def generate_recommendation_handler(event, context):
@@ -255,7 +203,8 @@ def generate_recommendation_handler(event, context):
         'threshold': float(os.environ["THRESHOLD"])
     }
 
-    generate_recommendations(recs_config)
+    generate_recommendations(recs_config=recs_config,
+                             add_to_db=True)
 
 
 if __name__ == '__main__':
