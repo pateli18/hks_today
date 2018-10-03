@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 from scipy.sparse.linalg import svds
 
+MODEL_VERSION = '0.0.0'
+
 
 def get_db_connection():
     """
@@ -205,7 +207,8 @@ def add_recs_to_db(user_recommendations):
         for user_rec in user_recs:
             user_rec = {"user_id": user,
                         "event_id": user_rec,
-                        "date_added": date_added}
+                        "date_added": date_added,
+                        "model_version": MODEL_VERSION}
             cursor.execute(add_rec, user_rec)
             total_recs += 1
 
