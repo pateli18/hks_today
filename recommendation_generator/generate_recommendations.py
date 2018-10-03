@@ -117,7 +117,7 @@ def get_recommendations(predictions_df,
     # creates dict with user id as key and list of recommended events
     user_recommendations = {}
     for index, row in predictions_upcoming_events_df.iterrows():
-        user_recommendations[index] = [event for event in relevant_upcoming_events if row[event] > threshold]
+        user_recommendations[index] = {event for event in relevant_upcoming_events if row[event] > threshold}
 
     return user_recommendations
 
@@ -156,7 +156,7 @@ def add_recs_to_db(user_recommendations):
 
 def generate_recommendations(recs_config,
                              add_to_db=True,
-                             max_date=pd.Timestamp.today()):
+                             date_filter=pd.Timestamp.today()):
     """
     Runs each of the steps in the pipeline for generating recommendations
 
@@ -168,7 +168,7 @@ def generate_recommendations(recs_config,
     """
     print("Getting User Event Matrix")
     user_event_df = get_user_event_df(min_actions=recs_config["min_user_actions"],
-                                      max_date=max_date)
+                                      max_date=date_filter)
 
     print("Calculating Predictions")
     predictions_df = get_predictions_df(user_event_df=user_event_df,
@@ -178,7 +178,7 @@ def generate_recommendations(recs_config,
     user_recommendations = get_recommendations(predictions_df=predictions_df,
                                                user_event_df=user_event_df,
                                                threshold=recs_config["threshold"],
-                                               date_filter=max_date)
+                                               date_filter=date_filter)
 
     if add_to_db:
         print("Saving Predictions")
@@ -208,4 +208,57 @@ def generate_recommendation_handler(event, context):
 
 
 if __name__ == '__main__':
-    generate_recommendation_handler(None, None)
+    # run simulation if running the function locally
+    from recommendation_simulation import run_simulation
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--min_user_actions',
+                        '-m',
+                        required=True,
+                        type=int,
+                        help='Mininum number of events user must have added to generate recommendations for them')
+
+    parser.add_argument('--vector_size',
+                        '-v',
+                        required=True,
+                        type=int,
+                        help='Size of svd vector')
+
+    parser.add_argument('--threshold',
+                        '-t',
+                        required=True,
+                        type=float,
+                        help='Threshold over which to include recommendation for user')
+
+    parser.add_argument('--start_date',
+                        '-s',
+                        required=True,
+                        type=str,
+                        help='Date at which to start simulation')
+
+    parser.add_argument('--end_date',
+                        '-e',
+                        required=True,
+                        type=str,
+                        help='Date at which to end simulation')
+
+    parser.add_argument('--output_path',
+                        '-o',
+                        default='./simulation_reports/',
+                        type=str,
+                        help='Folder in which to save report')
+
+    args = parser.parse_args()
+
+    function_parameters = {'recs_config': {'min_user_actions': args.min_user_actions,
+                                           'vector_size': args.vector_size,
+                                           'threshold': args.threshold},
+                           'add_to_db': False}
+
+    run_simulation(model_version=MODEL_VERSION,
+                   function=generate_recommendations,
+                   function_parameters=function_parameters,
+                   start_date_str=args.start_date,
+                   end_date_str=args.end_date,
+                   output_path=args.output_path)
