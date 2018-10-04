@@ -2,6 +2,7 @@ import datetime
 import json
 
 import pandas as pd
+import multiprocessing
 
 from utils import recommendation_helpers
 
@@ -77,7 +78,8 @@ def get_results_metrics(user_choices,
                         model_version,
                         start_date_str,
                         end_date_str,
-                        output_path='./simulation_reports/'):
+                        output_path='./simulation_reports/',
+                        include_user_results=False):
     """
     Calculates metrics at the user and total level for a simulation run, saving a json of the results
 
@@ -109,7 +111,8 @@ def get_results_metrics(user_choices,
         user_results[user]['missed'] = {'count': len(missed_events), 'events': list(missed_events)}
         user_results[user]['unchosen'] = {'count': len(unchosen_events), 'events': list(unchosen_events)}
 
-    recommender_results['user_results'] = user_results
+    if include_user_results:
+        recommender_results['user_results'] = user_results
 
     # get total metrics
     total_correct = get_total_result_count(user_results=user_results,
@@ -133,7 +136,6 @@ def get_results_metrics(user_choices,
     recommender_results['timestamp'] = get_timestamp()
     recommender_results['function_name'] = function.__name__
 
-    del function_parameters['date_filter']
     recommender_results['function_params'] = function_parameters
     recommender_results['model_version'] = model_version
 
@@ -144,12 +146,34 @@ def get_results_metrics(user_choices,
     print('File saved to {0}'.format(filename))
 
 
+def simulate_date(function,
+                  function_parameters,
+                  date):
+    """
+    Simulate an individual date, used by multiprocessing step
+
+    Arguments:
+        function (function): function on which simulation was run on
+        function_parameters (dict): parameters of model function for simulation
+        date (datetime): date to run function for
+
+    Returns:
+        date_recs (dict of sets): {user_id:{event_id, ...}, ...}
+    """
+    function_parameters['date_filter'] = date
+    date_recs = function(**function_parameters)
+    print('{} complete...'.format(date))
+    return date_recs
+
+
 def run_simulation(model_version,
                    function,
                    function_parameters,
                    start_date_str,
                    end_date_str,
-                   output_path='./simulation_reports/'):
+                   pool_processes=4,
+                   output_path='./simulation_reports/',
+                   include_user_results=False):
     """
     Runs a simulation of the chosen model/function over a specified time period before passing results to
     get results metrics
@@ -167,16 +191,21 @@ def run_simulation(model_version,
     end_date = pd.to_datetime(end_date_str)
     date_list = get_weekly_date_list(start_date, end_date)
 
-    # run model / function over date range, saving results to recommended event adds
+    # create worker data for multiprocessing
+    worker_data = [(function, function_parameters, date)
+                   for date in date_list]
+
+    # run multiprocessing
+    pool = multiprocessing.Pool(pool_processes)
+    all_date_recs = pool.starmap(simulate_date, worker_data)
+
+    # aggregate individual date results
     recommended_event_adds = {}
-    for i, date in enumerate(date_list):
-        function_parameters['date_filter'] = date
-        date_recs = function(**function_parameters)
+    for date_recs in all_date_recs:
         for user in date_recs:
             previous_events = recommended_event_adds.get(user, set())
             all_events = previous_events | date_recs[user]
             recommended_event_adds[user] = all_events
-        print("{0} out of {1} complete...".format(i + 1, len(date_list)))
 
     actual_event_adds = get_all_user_adds(user_recommendations=recommended_event_adds,
                                           max_date=end_date)
@@ -188,4 +217,5 @@ def run_simulation(model_version,
                         model_version=model_version,
                         start_date_str=start_date_str,
                         end_date_str=end_date_str,
-                        output_path=output_path)
+                        output_path=output_path,
+                        include_user_results=include_user_results)

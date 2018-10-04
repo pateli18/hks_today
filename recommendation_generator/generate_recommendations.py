@@ -1,4 +1,5 @@
 import os
+import datetime
 
 import pandas as pd
 import numpy as np
@@ -10,7 +11,9 @@ MODEL_VERSION = '0.0.0'
 
 
 def get_user_event_df(min_actions,
-                      max_date=pd.Timestamp.today()):
+                      max_recent_action_days=14,
+                      max_date=pd.Timestamp.today(),
+                      verbose=False):
     """
     Gets dataframe with user ids as index and event ids as columns,
     with a flag as the value if the user has added the event
@@ -22,20 +25,26 @@ def get_user_event_df(min_actions,
         user_event_df (Pandas DataFrame): dataframe with users as index and events as columns
     """
     df = recommendation_helpers.get_canonical_event_adds(max_date=max_date,
-                                                         verbose=False)
+                                                         verbose=verbose)
 
     # get indices of users who have undertaken minimum number of actions
     user_adds = df.groupby('user_id').size()
-    selected_users = list(user_adds[user_adds >= min_actions].index)
+    users_w_min_adds = list(user_adds[user_adds >= min_actions].index)
+
+    # get indices of users who have added an event recently
+    recent_action_date = max_date - datetime.timedelta(days=max_recent_action_days)
+    most_recent_user_add = df.groupby('user_id')['date_selected'].max()
+    users_w_recent_add = list(most_recent_user_add[most_recent_user_add >= recent_action_date].index)
 
     # filter dataframe and create flag for pivot
-    df_clean = df[df['user_id'].isin(selected_users)]
+    df_clean = df[(df['user_id'].isin(users_w_min_adds)) & (df['user_id'].isin(users_w_recent_add))]
     df_clean['flag'] = 1
 
     user_event_df = df_clean.pivot(index='user_id', columns='event_id', values='flag')
     user_event_df.fillna(0, inplace=True)
 
-    print("Matrix Shape: ", user_event_df.shape)
+    if verbose:
+        print("Matrix Shape: ", user_event_df.shape)
     return user_event_df
 
 
@@ -51,6 +60,10 @@ def get_predictions_df(user_event_df,
     Returns:
         predictions_df (Pandas DataFrame): dataframe with users as index and events as columns
     """
+    # k cannot be larger than minimum dimension on df
+    min_dim = min(user_event_df.shape)
+    if k > min_dim:
+        k = min_dim - 1
 
     # Calculate svd score
     U, sigma, Vt = svds(user_event_df, k=k)
@@ -156,7 +169,8 @@ def add_recs_to_db(user_recommendations):
 
 def generate_recommendations(recs_config,
                              add_to_db=True,
-                             date_filter=pd.Timestamp.today()):
+                             date_filter=pd.Timestamp.today(),
+                             verbose=False):
     """
     Runs each of the steps in the pipeline for generating recommendations
 
@@ -166,25 +180,38 @@ def generate_recommendations(recs_config,
     Returns:
         user_recommendations (dict): dict with user ids and list of events per user
     """
-    print("Getting User Event Matrix")
+    if verbose:
+        print("Getting User Event Matrix")
     user_event_df = get_user_event_df(min_actions=recs_config["min_user_actions"],
-                                      max_date=date_filter)
+                                      max_recent_action_days=recs_config["max_recent_action_days"],
+                                      max_date=date_filter,
+                                      verbose=verbose)
 
-    print("Calculating Predictions")
-    predictions_df = get_predictions_df(user_event_df=user_event_df,
-                                        k=recs_config["vector_size"])
+    # if no event matrix, don't return anything
+    if min(user_event_df.shape) > 1:
 
-    print("Extracting Predictions")
-    user_recommendations = get_recommendations(predictions_df=predictions_df,
-                                               user_event_df=user_event_df,
-                                               threshold=recs_config["threshold"],
-                                               date_filter=date_filter)
+        if verbose:
+            print("Calculating Predictions")
+        predictions_df = get_predictions_df(user_event_df=user_event_df,
+                                            k=recs_config["vector_size"])
+        if verbose:
+            print("Extracting Predictions")
+        user_recommendations = get_recommendations(predictions_df=predictions_df,
+                                                   user_event_df=user_event_df,
+                                                   threshold=recs_config["threshold"],
+                                                   date_filter=date_filter)
 
-    if add_to_db:
-        print("Saving Predictions")
-        users_w_recs, total_recs = add_recs_to_db(user_recommendations)
+        if add_to_db:
+            if verbose:
+                print("Saving Predictions")
+            users_w_recs, total_recs = add_recs_to_db(user_recommendations)
 
-        print("Generated {0} recommendations for {1} users".format(total_recs, users_w_recs))
+            if verbose:
+                print("Generated {0} recommendations for {1} users".format(total_recs, users_w_recs))
+
+    else:
+
+        user_recommendations = {}
 
     return user_recommendations
 
@@ -200,7 +227,8 @@ def generate_recommendation_handler(event, context):
     recs_config = {
         'min_user_actions': int(os.environ["MIN_USER_ACTIONS"]),
         'vector_size': int(os.environ["VECTOR_SIZE"]),
-        'threshold': float(os.environ["THRESHOLD"])
+        'threshold': float(os.environ["THRESHOLD"]),
+        'max_recent_action_days': float(os.environ["MAX_RECENT_ACTION_DAYS"])
     }
 
     generate_recommendations(recs_config=recs_config,
@@ -231,6 +259,12 @@ if __name__ == '__main__':
                         type=float,
                         help='Threshold over which to include recommendation for user')
 
+    parser.add_argument('--max_recent_action_days',
+                        '-r',
+                        required=True,
+                        type=int,
+                        help='Max days since user has taken an action in order to be included in recommendation set')
+
     parser.add_argument('--start_date',
                         '-s',
                         required=True,
@@ -249,11 +283,24 @@ if __name__ == '__main__':
                         type=str,
                         help='Folder in which to save report')
 
+    parser.add_argument('--include_user_results',
+                        '-i',
+                        default=False,
+                        type=bool,
+                        help='Include individual user data in results report')
+
+    parser.add_argument('--processes',
+                        '-p',
+                        default=4,
+                        type=int,
+                        help='Number of processes to run in simulation')
+
     args = parser.parse_args()
 
     function_parameters = {'recs_config': {'min_user_actions': args.min_user_actions,
                                            'vector_size': args.vector_size,
-                                           'threshold': args.threshold},
+                                           'threshold': args.threshold,
+                                           'max_recent_action_days': args.max_recent_action_days},
                            'add_to_db': False}
 
     run_simulation(model_version=MODEL_VERSION,
@@ -261,4 +308,6 @@ if __name__ == '__main__':
                    function_parameters=function_parameters,
                    start_date_str=args.start_date,
                    end_date_str=args.end_date,
-                   output_path=args.output_path)
+                   output_path=args.output_path,
+                   include_user_results=args.include_user_results,
+                   pool_processes=args.processes)
