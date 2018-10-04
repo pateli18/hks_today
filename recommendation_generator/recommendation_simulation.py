@@ -19,7 +19,7 @@ def get_all_user_adds(user_recommendations,
         event_adds (dict of sets): dict of user ids with sets of all events added by the user to calendar
     """
     df = recommendation_helpers.get_canonical_event_adds(max_date=max_date,
-                                                         verbose=True)
+                                                         verbose=False)
     event_adds = {}
     for user, row in df.groupby('user_id'):
         if user in user_recommendations:
