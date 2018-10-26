@@ -231,8 +231,10 @@ def generate_recommendation_handler(event, context):
         'max_recent_action_days': float(os.environ["MAX_RECENT_ACTION_DAYS"])
     }
 
-    generate_recommendations(recs_config=recs_config,
-                             add_to_db=True)
+    user_recommendations = generate_recommendations(recs_config=recs_config,
+                                                    add_to_db=True)
+
+    return user_recommendations
 
 
 if __name__ == '__main__':
