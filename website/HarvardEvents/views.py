@@ -359,7 +359,8 @@ def add_to_google_calendar(event_id, selection_source):
             selected_event = EventSelection(user_id=current_user.id,
                                             event_id=event_id,
                                             selection_type='calendar',
-                                            selection_source=selection_source)
+                                            selection_source=selection_source,
+                                            date_selected=datetime.datetime.today())
             db.session.add(selected_event)
             db.session.commit()
 
