@@ -1,5 +1,7 @@
-cd recommendation-env/lib/python3.6/site-packages/
-zip -r9 ../../../../RecsLambdaDeploymentPackage.zip *
-cd ../../../../
-zip -g RecsLambdaDeploymentPackage.zip generate_recommendations.py
-zip -r -g RecsLambdaDeploymentPackage.zip utils
+docker build --rm --no-cache -t lambda-recommendations .
+
+container_id=$(docker create lambda-recommendations bash)
+docker cp $container_id:/var/task/RecsLambdaDeploymentPackage.zip .
+docker rm -v $container_id
+
+aws s3 cp RecsLambdaDeploymentPackage.zip s3://elasticbeanstalk-us-east-1-811388761146/lambda_function_code/
