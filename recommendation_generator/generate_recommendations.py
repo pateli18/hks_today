@@ -156,7 +156,8 @@ def add_recs_to_db(user_recommendations):
             user_rec = {"user_id": user,
                         "event_id": user_rec,
                         "date_added": date_added,
-                        "model_version": MODEL_VERSION}
+                        "model_version": MODEL_VERSION,
+                        "date_added": datetime.datetime.today()}
             cursor.execute(add_rec, user_rec)
             total_recs += 1
 
