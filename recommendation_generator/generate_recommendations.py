@@ -11,7 +11,7 @@ MODEL_VERSION = '0.0.0'
 
 
 def get_user_event_df(min_actions,
-                      max_recent_action_days=14,
+                      max_recent_action_days,
                       max_date=pd.Timestamp.today(),
                       verbose=False):
     """
@@ -20,27 +20,19 @@ def get_user_event_df(min_actions,
 
     Arguments:
         min_actions (int): minimum number of actions a user must have undertaken to be included in matrix
+        max_recent_action_days (int): maximum number of days since a user has undertaken an action
 
     Returns:
         user_event_df (Pandas DataFrame): dataframe with users as index and events as columns
     """
-    df = recommendation_helpers.get_canonical_event_adds(max_date=max_date,
+    df = recommendation_helpers.get_canonical_event_adds(min_actions=min_actions,
+                                                         max_recent_action_days=max_recent_action_days,
+                                                         max_date=max_date,
                                                          verbose=verbose)
 
-    # get indices of users who have undertaken minimum number of actions
-    user_adds = df.groupby('user_id').size()
-    users_w_min_adds = list(user_adds[user_adds >= min_actions].index)
+    df['flag'] = df.shape[0] * [1]
 
-    # get indices of users who have added an event recently
-    recent_action_date = max_date - datetime.timedelta(days=max_recent_action_days)
-    most_recent_user_add = df.groupby('user_id')['date_selected'].max()
-    users_w_recent_add = list(most_recent_user_add[most_recent_user_add >= recent_action_date].index)
-
-    # filter dataframe and create flag for pivot
-    df_clean = df[(df['user_id'].isin(users_w_min_adds)) & (df['user_id'].isin(users_w_recent_add))]
-    df_clean['flag'] = df_clean.shape[0] * [1]
-
-    user_event_df = df_clean.pivot(index='user_id', columns='event_id', values='flag')
+    user_event_df = df.pivot(index='user_id', columns='event_id', values='flag')
     user_event_df.fillna(0, inplace=True)
 
     if verbose:
@@ -157,7 +149,7 @@ def add_recs_to_db(user_recommendations):
                         "event_id": user_rec,
                         "date_added": date_added,
                         "model_version": MODEL_VERSION,
-                        "date_added": datetime.datetime.today()}
+                        "date_added": date_added}
             cursor.execute(add_rec, user_rec)
             total_recs += 1
 
@@ -210,6 +202,11 @@ def generate_recommendations(recs_config,
             if verbose:
                 print("Generated {0} recommendations for {1} users".format(total_recs, users_w_recs))
 
+        # creates ab test set
+        if recs_config["create_ab_set"]:
+            recommendation_helpers.create_ab_set(user_list=user_event_df.index.tolist(),
+                                                 model_version=MODEL_VERSION)
+
     else:
 
         user_recommendations = {}
@@ -226,6 +223,7 @@ def generate_recommendation_handler(event, context):
         context (): required by lambda function
     """
     recs_config = {
+        'create_ab_set': bool(int(os.environ["CREATE_AB_SET"])),
         'min_user_actions': int(os.environ["MIN_USER_ACTIONS"]),
         'vector_size': int(os.environ["VECTOR_SIZE"]),
         'threshold': float(os.environ["THRESHOLD"]),
@@ -303,7 +301,8 @@ if __name__ == '__main__':
     function_parameters = {'recs_config': {'min_user_actions': args.min_user_actions,
                                            'vector_size': args.vector_size,
                                            'threshold': args.threshold,
-                                           'max_recent_action_days': args.max_recent_action_days},
+                                           'max_recent_action_days': args.max_recent_action_days,
+                                           'create_ab_set': False},
                            'add_to_db': False}
 
     run_simulation(model_version=MODEL_VERSION,
