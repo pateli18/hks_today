@@ -38,7 +38,7 @@ def get_user_event_df(min_actions,
 
     # filter dataframe and create flag for pivot
     df_clean = df[(df['user_id'].isin(users_w_min_adds)) & (df['user_id'].isin(users_w_recent_add))]
-    df_clean['flag'] = 1
+    df_clean['flag'] = df_clean.shape[0] * [1]
 
     user_event_df = df_clean.pivot(index='user_id', columns='event_id', values='flag')
     user_event_df.fillna(0, inplace=True)
@@ -130,7 +130,7 @@ def get_recommendations(predictions_df,
     # creates dict with user id as key and list of recommended events
     user_recommendations = {}
     for index, row in predictions_upcoming_events_df.iterrows():
-        user_recommendations[index] = {event for event in relevant_upcoming_events if row[event] > threshold}
+        user_recommendations[index] = list({event for event in relevant_upcoming_events if row[event] > threshold})
 
     return user_recommendations
 
@@ -141,8 +141,8 @@ def add_recs_to_db(user_recommendations):
     cursor = conn.cursor()
 
     date_added = str(pd.Timestamp.today()).split('.')[0]
-    add_rec = ('insert into recommendations (user_id, event_id, date_added)'
-               'VALUES (%(user_id)s, %(event_id)s, %(date_added)s)')
+    add_rec = ('insert into recommendations (user_id, event_id, date_added, model_version)'
+               'VALUES (%(user_id)s, %(event_id)s, %(date_added)s, %(model_version)s)')
 
     users_w_recs = 0
     total_recs = 0
