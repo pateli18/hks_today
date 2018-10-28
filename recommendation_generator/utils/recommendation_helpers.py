@@ -108,7 +108,12 @@ def create_ab_set(user_list,
         user_list (list of str): list of user ids
         model_version (str): model identifier
     """
-    test_users = set(random.sample(user_list, len(user_list) // 2))
+    # get users subscribed to recommendation emails
+    full_user_df = get_table_data(table_name='users')
+    subscribed_users = set(full_user_df[full_user_df['recommendation_subscribed'] == 1]['id'].tolist())
+    valid_users = [user for user in user_list if user in subscribed_users]
+
+    test_users = set(random.sample(valid_users, len(valid_users) // 2))
 
     conn = get_db_connection()
     cursor = conn.cursor()

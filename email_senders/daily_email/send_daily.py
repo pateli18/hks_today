@@ -4,7 +4,7 @@ from sendgrid.helpers.mail import *
 import datetime
 import mysql.connector
 
-import send_daily_helpers
+import email_helpers
 
 
 def get_newly_added_events(config):
@@ -25,7 +25,7 @@ def get_newly_added_events(config):
     order by start_time
     """.format(str(filter_date).split(' ')[0])
 
-    events = send_daily_helpers.get_events_from_query(config, sql_query)
+    events = email_helpers.get_events_from_query(config, sql_query)
 
     return events
 
@@ -49,7 +49,7 @@ def get_weekly_events(config):
     from events where start_time >= '{0}' and start_time < '{1}' order by start_time
     """.format(str(start_date).split(' ')[0], str(end_date).split(' ')[0])
 
-    events = send_daily_helpers.get_events_from_query(config, sql_query)
+    events = email_helpers.get_events_from_query(config, sql_query)
 
     return events
 
